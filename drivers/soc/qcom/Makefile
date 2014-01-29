@@ -19,9 +19,9 @@ obj-$(CONFIG_MSM_RPM_STATS_LOG) += rpm_stats.o rpm_master_stat.o
 obj-$(CONFIG_MSM_RPM_LOG) += rpm_log.o
 obj-$(CONFIG_MSM_QMI_INTERFACE) += qmi_interface.o
 
-obj-$(CONFIG_MSM_RUN_QUEUE_STATS) += msm_rq_stats.o
+<<obj-$(CONFIG_MSM_RUN_QUEUE_STATS) += msm_rq_stats.o
 
-obj-$(CONFIG_MSM_SCM) += scm.o
+obj-$(CONFIG_MSM_SCM) += scm.o scm-boot.o
 
 obj-$(CONFIG_MSM_SMD) += smd.o smd_debug.o smd_private.o smd_init_dt.o smsm_debug.o
 obj-$(CONFIG_MSM_SMEM) += smem.o smem_debug.o
