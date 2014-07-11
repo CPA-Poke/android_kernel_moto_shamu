@@ -34,3 +34,5 @@ obj-$(CONFIG_MEM_SHARE_QMI_SERVICE)		+= memshare/
 obj-y		+= socinfo.o
 obj-$(CONFIG_MMI_SOC_INFO) += mmi_soc_info.o
 obj-$(CONFIG_MMI_UNIT_INFO) += mmi-unit-info.o
+
+obj-$(CONFIG_MSM_SHARED_HEAP_ACCESS) += shared_memory.o
