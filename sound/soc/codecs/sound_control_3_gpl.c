@@ -18,7 +18,6 @@
 #include <linux/module.h>
 #include <linux/kobject.h>
 #include <linux/sysfs.h>
-#include <linux/kallsyms.h>
 #include <linux/mfd/wcd9xxx/core.h>
 #include <linux/mfd/wcd9xxx/wcd9320_registers.h>
 
@@ -31,8 +30,8 @@ extern int wcd9xxx_hw_revision;
 static int snd_ctrl_locked = 0;
 static int snd_rec_ctrl_locked = 0;
 
-unsigned int taiko_read(struct snd_soc_codec *codec, unsigned int reg);
-int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
+extern unsigned int taiko_read(struct snd_soc_codec *codec, unsigned int reg);
+extern int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
 		unsigned int value);
 
 #define REG_SZ	25
@@ -200,7 +199,7 @@ static ssize_t cam_mic_gain_show(struct kobject *kobj,
 {
         return sprintf(buf, "%u\n",
 		taiko_read(fauxsound_codec_ptr,
-			TAIKO_A_CDC_TX6_VOL_CTL_GAIN));
+			TAIKO_A_CDC_TX3_VOL_CTL_GAIN));
 
 }
 
@@ -213,7 +212,7 @@ static ssize_t cam_mic_gain_store(struct kobject *kobj,
 
 	if (calc_checksum(lval, 0, chksum)) {
 		taiko_write(fauxsound_codec_ptr,
-			TAIKO_A_CDC_TX6_VOL_CTL_GAIN, lval);
+			TAIKO_A_CDC_TX3_VOL_CTL_GAIN, lval);
 	}
 	return count;
 }
@@ -223,7 +222,7 @@ static ssize_t mic_gain_show(struct kobject *kobj,
 {
 	return sprintf(buf, "%u\n",
 		taiko_read(fauxsound_codec_ptr,
-			TAIKO_A_CDC_TX7_VOL_CTL_GAIN));
+			TAIKO_A_CDC_TX2_VOL_CTL_GAIN));
 }
 
 static ssize_t mic_gain_store(struct kobject *kobj,
@@ -235,7 +234,7 @@ static ssize_t mic_gain_store(struct kobject *kobj,
 
 	if (calc_checksum(lval, 0, chksum)) {
 		taiko_write(fauxsound_codec_ptr,
-			TAIKO_A_CDC_TX7_VOL_CTL_GAIN, lval);
+			TAIKO_A_CDC_TX2_VOL_CTL_GAIN, lval);
 	}
 	return count;
 
@@ -246,9 +245,9 @@ static ssize_t speaker_gain_show(struct kobject *kobj,
 {
         return sprintf(buf, "%u %u\n",
 			taiko_read(fauxsound_codec_ptr,
-				TAIKO_A_CDC_RX3_VOL_CTL_B2_CTL),
+				TAIKO_A_CDC_RX7_VOL_CTL_B2_CTL),
 			taiko_read(fauxsound_codec_ptr,
-				TAIKO_A_CDC_RX3_VOL_CTL_B2_CTL));
+				TAIKO_A_CDC_RX7_VOL_CTL_B2_CTL));
 
 }
 
@@ -261,9 +260,9 @@ static ssize_t speaker_gain_store(struct kobject *kobj,
 
 	if (calc_checksum(lval, rval, chksum)) {
 		taiko_write(fauxsound_codec_ptr,
-			TAIKO_A_CDC_RX3_VOL_CTL_B2_CTL, lval);
+			TAIKO_A_CDC_RX7_VOL_CTL_B2_CTL, lval);
 		taiko_write(fauxsound_codec_ptr,
-			TAIKO_A_CDC_RX3_VOL_CTL_B2_CTL, rval);
+			TAIKO_A_CDC_RX7_VOL_CTL_B2_CTL, rval);
 	}
 	return count;
 }

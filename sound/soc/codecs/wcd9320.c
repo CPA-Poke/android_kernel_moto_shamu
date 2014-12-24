@@ -4339,7 +4339,7 @@ extern unsigned int snd_hax_cache_read(unsigned int);
 extern void snd_hax_cache_write(unsigned int, unsigned int);
 #endif
 
-#ifndef CONFIG_SOUND_CONTROL_HAX_3_GPL 
+#ifndef CONFIG_SOUND_CONTROL_HAX_3_GPL
 static
 #endif
 unsigned int taiko_read(struct snd_soc_codec *codec,
@@ -4347,6 +4347,7 @@ unsigned int taiko_read(struct snd_soc_codec *codec,
 {
 	unsigned int val;
 	int ret;
+
 	struct wcd9xxx *wcd9xxx = codec->control_data;
 
 	if (reg == SND_SOC_NOPM)
@@ -4386,11 +4387,10 @@ int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
 	unsigned int value)
 {
 	int ret;
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	int val;
-#endif
-
 	struct wcd9xxx *wcd9xxx = codec->control_data;
+#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
+	unsigned int val;
+#endif
 
 	if (reg == SND_SOC_NOPM)
 		return 0;
@@ -4403,11 +4403,10 @@ int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
 			dev_err(codec->dev, "Cache write to %x failed: %d\n",
 				reg, ret);
 	}
-
 #ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
 	if (!snd_hax_reg_access(reg)) {
 		if (!((val = snd_hax_cache_read(reg)) != -1)) {
-			val = wcd9xxx_reg_read_safe(codec->control_data, reg);
+			val = wcd9xxx_reg_read_safe(&wcd9xxx->core_res, reg);
 		}
 	} else {
 		snd_hax_cache_write(reg, value);
