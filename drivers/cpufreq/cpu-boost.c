@@ -26,6 +26,8 @@
 #include <linux/slab.h>
 #include <linux/input.h>
 #include <linux/time.h>
+#include <linux/fb.h>
+#include <linux/notifier.h>
 
 struct cpu_sync {
 	struct delayed_work boost_rem;
@@ -44,6 +46,8 @@ static DEFINE_PER_CPU(struct task_struct *, thread);
 static struct workqueue_struct *cpu_boost_wq;
 
 static struct work_struct input_boost_work;
+
+static struct notifier_block notif;
 
 static unsigned int boost_ms;
 module_param(boost_ms, uint, 0644);
@@ -65,6 +69,9 @@ module_param(load_based_syncs, bool, 0644);
 
 static bool hotplug_boost = 1;
 module_param(hotplug_boost, bool, 0644);
+
+bool wakeup_boost;
+module_param(wakeup_boost, bool, 0644);
 
 static u64 last_input_time;
 
@@ -413,6 +420,34 @@ static struct notifier_block __refdata cpu_nblk = {
         .notifier_call = cpuboost_cpu_callback,
 };
 
+static int fb_notifier_callback(struct notifier_block *self,
+				unsigned long event, void *data)
+{
+	struct fb_event *evdata = data;
+	int *blank;
+
+	if (evdata && evdata->data && event == FB_EVENT_BLANK) {
+		blank = evdata->data;
+		switch (*blank) {
+			case FB_BLANK_UNBLANK:
+				if (!wakeup_boost || !input_boost_enabled ||
+				     work_pending(&input_boost_work))
+					break;
+				pr_debug("Wakeup boost for display on event.\n");
+				queue_work(cpu_boost_wq, &input_boost_work);
+				last_input_time = ktime_to_us(ktime_get());
+				break;
+			case FB_BLANK_POWERDOWN:
+			case FB_BLANK_HSYNC_SUSPEND:
+			case FB_BLANK_VSYNC_SUSPEND:
+			case FB_BLANK_NORMAL:
+				break;
+		}
+	}
+
+	return 0;
+}
+
 static int cpu_boost_init(void)
 {
 	int cpu, ret;
@@ -446,6 +481,8 @@ static int cpu_boost_init(void)
 	ret = register_hotcpu_notifier(&cpu_nblk);
 	if (ret)
 		pr_err("Cannot register cpuboost hotplug handler.\n");
+
+	notif.notifier_call = fb_notifier_callback;
 
 	return ret;
 }
