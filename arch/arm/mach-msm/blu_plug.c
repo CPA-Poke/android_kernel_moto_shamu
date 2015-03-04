@@ -21,7 +21,7 @@
 #include <linux/workqueue.h>
 #include <linux/sched.h>
 #include <linux/timer.h>
-#include <linux/lcd_notify.h>
+#include <linux/fb.h>
 #include <soc/qcom/cpufreq.h>
 #include <linux/cpufreq.h>
 #include <linux/delay.h>
@@ -204,34 +204,40 @@ static __ref void max_screenoff(bool screenoff)
 }
 
 /* On suspend put offline all cores except cpu0*/
-static __ref void dyn_lcd_suspend(struct work_struct *work)
+static void dyn_lcd_suspend(struct work_struct *work)
 {	
 	max_screenoff(true);
 }
 
 /* On resume bring online CPUs until max_online to prevent lags */
-static __ref void dyn_lcd_resume(struct work_struct *work)
+static void dyn_lcd_resume(struct work_struct *work)
 {
 	max_screenoff(false);
 }
 
-static __ref int lcd_notifier_callback(struct notifier_block *this, unsigned long event, void *data)
+static int fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
 {
-	switch (event) {
-	case LCD_EVENT_ON_END:
-	case LCD_EVENT_OFF_START:
-		break;
-	case LCD_EVENT_ON_START:
-		queue_work_on(0, dyn_workq, &resume);
-		break;
-	case LCD_EVENT_OFF_END:
-		queue_work_on(0, dyn_workq, &suspend);
-		break;
-	default:
-		break;
+	struct fb_event *evdata = data;
+	int *blank;
+
+	if (evdata && evdata->data && event == FB_EVENT_BLANK) {
+		blank = evdata->data;
+		switch (*blank) {
+			case FB_BLANK_UNBLANK:
+				//display on
+				queue_work_on(0, dyn_workq, &resume);
+				break;
+			case FB_BLANK_POWERDOWN:
+			case FB_BLANK_HSYNC_SUSPEND:
+			case FB_BLANK_VSYNC_SUSPEND:
+			case FB_BLANK_NORMAL:
+				//display off
+				queue_work_on(0, dyn_workq, &suspend);
+				break;
+		}
 	}
 
-	return NOTIFY_OK;
+	return 0;
 }
 
 /******************** Module parameters *********************/
@@ -349,7 +355,7 @@ static struct kernel_param_ops max_cores_screenoff_ops = {
 module_param_cb(max_cores_screenoff, &max_cores_screenoff_ops, &max_cores_screenoff, 0644);
 
 /* max_freq_screenoff */
-static __ref int set_max_freq_screenoff(const char *val, const struct kernel_param *kp)
+static int set_max_freq_screenoff(const char *val, const struct kernel_param *kp)
 {
 	int ret = MAX_FREQ_SCREENOFF;
 	unsigned int i;
@@ -427,9 +433,9 @@ module_param_cb(up_timer_cnt, &up_timer_cnt_ops, &up_timer_cnt, 0644);
 
 static int __init dyn_hp_init(void)
 {
-	notify.notifier_call = lcd_notifier_callback;
-	if (lcd_register_client(&notify) != 0)
-		pr_info("%s: lcd client register error\n", __func__);
+	notify.notifier_call = fb_notifier_callback;
+	if (fb_register_client(&notify) != 0)
+		pr_info("%s: Failed to register FB notifier callback\n", __func__);
 	
 	dyn_workq = alloc_workqueue("dyn_hotplug_workqueue", WQ_HIGHPRI | WQ_FREEZABLE, 0);
 	if (!dyn_workq)
@@ -448,6 +454,7 @@ static int __init dyn_hp_init(void)
 static void __exit dyn_hp_exit(void)
 {
 	cancel_delayed_work_sync(&dyn_work);
+	fb_unregister_client(&notify);
 	destroy_workqueue(dyn_workq);
 	
 	pr_info("%s: deactivated\n", __func__);
@@ -460,4 +467,3 @@ MODULE_LICENSE("GPLv2");
 
 late_initcall(dyn_hp_init);
 module_exit(dyn_hp_exit);
-
