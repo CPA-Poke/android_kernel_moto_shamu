@@ -86,9 +86,9 @@
  * Higher value allows xhci core to moderate interrupts resulting
  * in fewer interrupts from xhci core. This may result in better
  * overall power consumption during peak throughput. Hence set the
- * default HSIC interrupt moderation to 12000 (or 3ms interval)
+ * default HSIC interrupt moderation to 48000 (or 12ms interval)
  */
-#define MSM_HSIC_INT_MODERATION 12000
+#define MSM_HSIC_INT_MODERATION 48000
 
 static u64 dma_mask = DMA_BIT_MASK(64);
 
@@ -144,8 +144,8 @@ static struct dbg_data dbg_hsic = {
 	.ctrl_lck = __RW_LOCK_UNLOCKED(clck),
 	.data_idx = 0,
 	.data_lck = __RW_LOCK_UNLOCKED(dlck),
-	.log_payload = 1,
-	.log_events = 1,
+	.log_payload = 0,
+	.log_events = 0,
 	.inep_log_mask = 0xffff,
 	.outep_log_mask = 0xffff
 };
