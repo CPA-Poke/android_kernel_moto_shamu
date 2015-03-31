@@ -692,12 +692,6 @@ static struct timed_output_dev to_dev = {
 	.get_time = vibrator_get_time,
 	.enable = vibrator_enable,
 };
-
-void set_vibrate(int value)
-{
-	vibrator_enable(&to_dev, value);
-}
-
 static void drv260x_update_init_sequence(unsigned char *seq, int size,
 					unsigned char reg, unsigned char data)
 {
@@ -941,14 +935,6 @@ static void probe_work(struct work_struct *work)
 
 	/* Read calibration results */
 	drv260x_read_reg_val(reinit_sequence, sizeof(reinit_sequence));
-
-	if (drv260x->use_default_calibration) {
-		reinit_sequence[3] = drv260x->default_calibration[0];
-		reinit_sequence[5] = drv260x->default_calibration[1];
-		reinit_sequence[7] = drv260x->default_calibration[2];
-		reinit_sequence[9] = drv260x->default_calibration[3];
-		reinit_sequence[11] = drv260x->default_calibration[4];
-	}
 
 	/* Read device ID */
 	device_id = (status & DEV_ID_MASK);
@@ -1200,7 +1186,6 @@ static int drv260x_init(void)
 {
 	int reval = -ENOMEM;
 
-	vibe_strength = REAL_TIME_PLAYBACK_STRENGTH;
 	drv260x = kmalloc(sizeof *drv260x, GFP_KERNEL);
 	if (!drv260x) {
 		printk(KERN_ALERT
@@ -1265,10 +1250,6 @@ static int drv260x_init(void)
 	}
 
 	printk(KERN_ALERT "drv260x: initialized\n");
-
-	vibe_kobj = kobject_create_and_add("vibrator", NULL);
-	if (!vibe_kobj) return 0;
-	reval = sysfs_create_file(vibe_kobj, &dev_attr_pwmvalue.attr);
 	return 0;
 
  fail6:
