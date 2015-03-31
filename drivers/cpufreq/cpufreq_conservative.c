@@ -333,7 +333,7 @@ static ssize_t store_input_boost_duration(struct dbs_data *dbs_data, const char 
         struct cs_dbs_tuners *cs_tuners = dbs_data->tuners;
         unsigned int input;
         int ret;
-        ret = sscanf(buf, "%u", &input);
+        ret = sscanf(buf, "%x", &input);
 
         if (ret != 1)
                 return -EINVAL;

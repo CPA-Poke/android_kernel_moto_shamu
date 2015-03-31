@@ -35,7 +35,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/kernel.h>
 #include <linux/gpio.h>
-#include <linux/moduleparam.h>
 #include "wcd9320.h"
 #include "wcd9xxx-resmgr.h"
 #include "wcd9xxx-common.h"
@@ -50,9 +49,6 @@ struct sound_control {
 	.playback_lock = false,
 	.recording_lock = false,
 };
-
-static bool enable_fs = false;
-module_param(enable_fs, bool, 0644);
 
 #define TAIKO_MAD_SLIMBUS_TX_PORT 12
 #define TAIKO_MAD_AUDIO_FIRMWARE_PATH "wcd9320/wcd9320_mad_audio.bin"
@@ -4337,16 +4333,34 @@ static int reg_access(unsigned int reg)
 	return ret;
 }
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-extern int snd_hax_reg_access(unsigned int);
-extern unsigned int snd_hax_cache_read(unsigned int);
-extern void snd_hax_cache_write(unsigned int, unsigned int);
-#endif
+static int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
+	unsigned int value)
+{
+	int val;
+	int ret;
+	struct wcd9xxx *wcd9xxx = codec->control_data;
 
-#ifndef CONFIG_SOUND_CONTROL_HAX_3_GPL
-static
-#endif
-unsigned int taiko_read(struct snd_soc_codec *codec,
+	if (reg == SND_SOC_NOPM)
+		return 0;
+
+	BUG_ON(reg > TAIKO_MAX_REGISTER);
+
+	if (!taiko_volatile(codec, reg)) {
+		ret = snd_soc_cache_write(codec, reg, value);
+		if (ret != 0)
+			dev_err(codec->dev, "Cache write to %x failed: %d\n",
+				reg, ret);
+	}
+
+	if (!reg_access(reg))
+		val = wcd9xxx_reg_read(&wcd9xxx->core_res, reg);
+	else
+		val = value;
+
+	return wcd9xxx_reg_write(&wcd9xxx->core_res, reg, val);
+}
+
+static unsigned int taiko_read(struct snd_soc_codec *codec,
 				unsigned int reg)
 {
 	unsigned int val;
@@ -4369,63 +4383,9 @@ unsigned int taiko_read(struct snd_soc_codec *codec,
 				reg, ret);
 	}
 
-	if (!reg_access(reg))
-		val = wcd9xxx_reg_read(&wcd9xxx->core_res, reg);
-	else
-		val = value;
-
-	return wcd9xxx_reg_write(&wcd9xxx->core_res, reg, val);
-}
-
 	val = wcd9xxx_reg_read(&wcd9xxx->core_res, reg);
 	return val;
 }
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-EXPORT_SYMBOL(taiko_read);
-#endif
-
-#ifndef CONFIG_SOUND_CONTROL_HAX_3_GPL
-static
-#endif
-int taiko_write(struct snd_soc_codec *codec, unsigned int reg,
-	unsigned int value)
-{
-	int ret;
-	struct wcd9xxx *wcd9xxx = codec->control_data;
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	unsigned int val;
-#endif
-
-	if (reg == SND_SOC_NOPM)
-		return 0;
-
-	BUG_ON(reg > TAIKO_MAX_REGISTER);
-
-	if (!taiko_volatile(codec, reg)) {
-		ret = snd_soc_cache_write(codec, reg, value);
-		if (ret != 0)
-			dev_err(codec->dev, "Cache write to %x failed: %d\n",
-				reg, ret);
-	}
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	if (enable_fs) {
-		if (!snd_hax_reg_access(reg)) {
-			if (!((val = snd_hax_cache_read(reg)) != -1)) {
-				val = wcd9xxx_reg_read_safe(&wcd9xxx->core_res, reg);
-			}
-		} else {
-			snd_hax_cache_write(reg, value);
-			val = value;
-		}
-	} else val = value;
-	return wcd9xxx_reg_write(&wcd9xxx->core_res, reg, val);
-#else
-	return wcd9xxx_reg_write(&wcd9xxx->core_res, reg, value);
-#endif
-}
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-EXPORT_SYMBOL(taiko_write);
-#endif
 
 static int taiko_startup(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
@@ -7085,12 +7045,6 @@ void update_mic_gain(unsigned int vol_boost)
 		taiko_read(soundcontrol.snd_control_codec,
 		TAIKO_A_CDC_TX3_VOL_CTL_GAIN));
 }
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-struct snd_soc_codec *fauxsound_codec_ptr;
-EXPORT_SYMBOL(fauxsound_codec_ptr);
-int wcd9xxx_hw_revision;
-EXPORT_SYMBOL(wcd9xxx_hw_revision);
-#endif
 
 static int taiko_codec_probe(struct snd_soc_codec *codec)
 {
@@ -7107,20 +7061,9 @@ static int taiko_codec_probe(struct snd_soc_codec *codec)
 
 	soundcontrol.snd_control_codec = codec;
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	pr_info("taiko codec probe...\n");
-	fauxsound_codec_ptr = codec;
-#endif
-
 	codec->control_data = dev_get_drvdata(codec->dev->parent);
 	control = codec->control_data;
 
-#ifdef CONFIG_SOUND_CONTROL_HAX_3_GPL
-	if (TAIKO_IS_1_0(control->version))
-		wcd9xxx_hw_revision = 1;
-	else
-		wcd9xxx_hw_revision = 2;
-#endif
 	wcd9xxx_ssr_register(control, taiko_device_down,
 			     taiko_post_reset_cb, (void *)codec);
 
