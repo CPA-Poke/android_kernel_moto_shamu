@@ -3,7 +3,8 @@
 SOURCE="/home/cpa/android/kernel"
 RAMDISK="/home/cpa/android/ramdisk"
 OUT="/home/cpa/android/shamu_out"
-export CROSS_COMPILE=~/android/TOOLCHAINS/arm-eabi-4.9/bin/arm-eabi-
+export ARCH=arm
+export CROSS_COMPILE=~/android/TOOLCHAINS/arm-eabi-5.0/bin/arm-eabi-
 
 # Colorize and add text parameters
 red=$(tput setaf 1) # red
