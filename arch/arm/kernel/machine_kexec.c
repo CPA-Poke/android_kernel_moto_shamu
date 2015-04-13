@@ -197,8 +197,7 @@ void machine_kexec(struct kimage *image)
 		kexec_hardboot_hook();
 #endif
 
-	soft_restart(reboot_entry_phys);
-
+	soft_restart(reboot_code_buffer_phys);
 }
 
 void arch_crash_save_vmcoreinfo(void)
