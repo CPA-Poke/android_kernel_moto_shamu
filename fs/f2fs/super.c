@@ -1212,7 +1212,7 @@ free_sbi:
 
 	/* give only one another chance */
 	if (retry) {
-		retry = 0;
+		retry = false;
 		shrink_dcache_sb(sb);
 		goto try_onemore;
 	}
