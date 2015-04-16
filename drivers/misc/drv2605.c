@@ -1250,6 +1250,7 @@ static int drv260x_init(void)
 	}
 
 	printk(KERN_ALERT "drv260x: initialized\n");
+
 	return 0;
 
  fail6:

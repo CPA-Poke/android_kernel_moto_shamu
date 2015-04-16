@@ -1146,6 +1146,9 @@ kgsl_sharedmem_find_region(struct kgsl_process_private *private,
 {
 	struct rb_node *node;
 
+	if (!private)
+		return NULL;
+
 	if (!kgsl_mmu_gpuaddr_in_range(private->pagetable, gpuaddr))
 		return NULL;
 
@@ -2630,6 +2633,22 @@ static int match_file(const void *p, struct file *file, unsigned int fd)
 	return (p == file) ? (fd + 1) : 0;
 }
 
+static void _setup_cache_mode(struct kgsl_mem_entry *entry,
+		struct vm_area_struct *vma)
+{
+	unsigned int mode;
+	pgprot_t pgprot = vma->vm_page_prot;
+
+	if (pgprot == pgprot_noncached(pgprot))
+		mode = KGSL_CACHEMODE_UNCACHED;
+	else if (pgprot == pgprot_writecombine(pgprot))
+		mode = KGSL_CACHEMODE_WRITECOMBINE;
+	else
+		mode = KGSL_CACHEMODE_WRITEBACK;
+
+	entry->memdesc.flags |= (mode << KGSL_CACHEMODE_SHIFT);
+}
+
 static int kgsl_setup_useraddr(struct kgsl_mem_entry *entry,
 			      struct kgsl_pagetable *pagetable,
 			      void *data,
@@ -2675,6 +2694,13 @@ static int kgsl_setup_useraddr(struct kgsl_mem_entry *entry,
 		int ret = kgsl_setup_dma_buf(entry, pagetable, device, dmabuf);
 		if (ret)
 			dma_buf_put(dmabuf);
+		else {
+			/* Match the cache settings of the vma region */
+			_setup_cache_mode(entry, vma);
+			/* Set the useraddr to the incoming hostptr */
+			entry->memdesc.useraddr = param->hostptr;
+		}
+
 		return ret;
 	}
 
@@ -2803,7 +2829,7 @@ static int kgsl_setup_ion(struct kgsl_mem_entry *entry,
 	int fd = param->fd;
 	struct dma_buf *dmabuf;
 
-	if (!param->len)
+	if (!param->len || param->offset)
 		return -EINVAL;
 
 	dmabuf = dma_buf_get(fd);
@@ -2940,7 +2966,7 @@ long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 		goto error_attach;
 
 	/* Adjust the returned value for a non 4k aligned offset */
-	param->gpuaddr = entry->memdesc.gpuaddr + (param->offset & ~PAGE_MASK);
+	param->gpuaddr = entry->memdesc.gpuaddr + (param->offset & PAGE_MASK);
 
 	KGSL_STATS_ADD(param->len, kgsl_driver.stats.mapped,
 		kgsl_driver.stats.mapped_max);
@@ -3472,7 +3498,7 @@ long kgsl_ioctl_helper(struct file *filep, unsigned int cmd,
 	kgsl_ioctl_func_t func;
 	int ret;
 	char ustack[64];
-	void *uptr = NULL;
+	void *uptr = ustack;
 
 	BUG_ON(dev_priv == NULL);
 
@@ -3481,10 +3507,8 @@ long kgsl_ioctl_helper(struct file *filep, unsigned int cmd,
 
 	nr = _IOC_NR(cmd);
 
-	if (cmd & (IOC_IN | IOC_OUT)) {
-		if (_IOC_SIZE(cmd) < sizeof(ustack))
-			uptr = ustack;
-		else {
+	if (cmd & IOC_INOUT) {
+		if (_IOC_SIZE(cmd) > sizeof(ustack)) {
 			uptr = kzalloc(_IOC_SIZE(cmd), GFP_KERNEL);
 			if (uptr == NULL) {
 				KGSL_MEM_ERR(dev_priv->device,
@@ -3547,7 +3571,7 @@ long kgsl_ioctl_helper(struct file *filep, unsigned int cmd,
 	}
 
 done:
-	if (_IOC_SIZE(cmd) >= sizeof(ustack))
+	if ((cmd & IOC_INOUT) && (uptr != ustack))
 		kfree(uptr);
 
 	return ret;
