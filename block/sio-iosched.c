@@ -3,6 +3,7 @@
  * Based on Noop, Deadline and V(R) IO schedulers.
  *
  * Copyright (C) 2012 Miguel Boton <mboton@gmail.com>
+ * Copyright (C) 2015 Brandon Berhent <bbedward@gmail.com>
  *
  *
  * This algorithm does not do any kind of sorting, as it is aimed for
@@ -23,8 +24,8 @@
 enum { ASYNC, SYNC };
 
 /* Tunables */
-static const int sync_read_expire  = 1000;	/* max time before a sync read is submitted. */
-static const int sync_write_expire = 5000;	/* max time before a sync write is submitted. */
+static const int sync_read_expire  = HZ / 4;	/* max time before a sync read is submitted. */
+static const int sync_write_expire = 2 * HZ;	/* max time before a sync write is submitted. */
 
 static const int async_read_expire  =  4 * HZ;	/* ditto for async, these limits are SOFT! */
 static const int async_write_expire = 16 * HZ;	/* ditto for async, these limits are SOFT! */
@@ -48,6 +49,11 @@ struct sio_data {
 	int writes_starved;
 };
 
+static inline struct sio_data *
+sio_get_data(struct request_queue *q) {
+	return q->elevator->elevator_data;
+}
+
 static void
 sio_merged_requests(struct request_queue *q, struct request *rq,
 		    struct request *next)
@@ -70,7 +76,7 @@ sio_merged_requests(struct request_queue *q, struct request *rq,
 static void
 sio_add_request(struct request_queue *q, struct request *rq)
 {
-	struct sio_data *sd = q->elevator->elevator_data;
+	struct sio_data *sd = sio_get_data(q);
 	const int sync = rq_is_sync(rq);
 	const int data_dir = rq_data_dir(rq);
 
@@ -78,8 +84,10 @@ sio_add_request(struct request_queue *q, struct request *rq)
 	 * Add request to the proper fifo list and set its
 	 * expire time.
 	 */
-	rq_set_fifo_time(rq, jiffies + sd->fifo_expire[sync][data_dir]);
-	list_add_tail(&rq->queuelist, &sd->fifo_list[sync][data_dir]);
+	if (sd->fifo_expire[sync][data_dir]) {
+		rq_set_fifo_time(rq, jiffies + sd->fifo_expire[sync][data_dir]);
+		list_add_tail(&rq->queuelist, &sd->fifo_list[sync][data_dir]);
+	}
 }
 
 static struct request *
@@ -173,7 +181,7 @@ sio_dispatch_request(struct sio_data *sd, struct request *rq)
 static int
 sio_dispatch_requests(struct request_queue *q, int force)
 {
-	struct sio_data *sd = q->elevator->elevator_data;
+	struct sio_data *sd = sio_get_data(q);
 	struct request *rq = NULL;
 	int data_dir = READ;
 
@@ -236,20 +244,16 @@ static int sio_init_queue(struct request_queue *q, struct elevator_type *e)
 	struct elevator_queue *eq;
 
 	eq = elevator_alloc(q, e);
-	if (eq == NULL)
+	if (!eq)
 		return -ENOMEM;
 
 	/* Allocate structure */
 	sd = kmalloc_node(sizeof(*sd), GFP_KERNEL, q->node);
-	if (sd == NULL) {
+	if (!sd) {
 		kobject_put(&eq->kobj);
 		return -ENOMEM;
 	}
 	eq->elevator_data = sd;
-
-	spin_lock_irq(q->queue_lock);
-	q->elevator = eq;
-	spin_unlock_irq(q->queue_lock);
 
 	/* Initialize fifo lists */
 	INIT_LIST_HEAD(&sd->fifo_list[SYNC][READ]);
@@ -264,6 +268,10 @@ static int sio_init_queue(struct request_queue *q, struct elevator_type *e)
 	sd->fifo_expire[ASYNC][READ] = async_read_expire;
 	sd->fifo_expire[ASYNC][WRITE] = async_write_expire;
 	sd->fifo_batch = fifo_batch;
+
+	spin_lock_irq(q->queue_lock);
+	q->elevator = eq;
+	spin_unlock_irq(q->queue_lock);
 
 	return 0;
 }
@@ -374,7 +382,6 @@ static struct elevator_type iosched_sio = {
 
 static int __init sio_init(void)
 {
-	/* Register elevator */
 	return elv_register(&iosched_sio);
 }
 
@@ -384,14 +391,10 @@ static void __exit sio_exit(void)
 	elv_unregister(&iosched_sio);
 }
 
-#ifdef CONFIG_FAST_RESUME
-beforeresume_initcall(sio_init);
-#else
 module_init(sio_init);
-#endif
 module_exit(sio_exit);
 
 MODULE_AUTHOR("Miguel Boton");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Simple IO scheduler");
-MODULE_VERSION("0.2");
+MODULE_VERSION("0.3");
