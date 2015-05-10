@@ -163,11 +163,8 @@
 #define I2C_RETRY_DELAY		20 /* ms */
 #define I2C_RETRIES		5
 
-/*
- * Default RTP_STRENGTH is 0x7F which in decimal is 127
- * it's a little to harsh, let's try 100 as the default
- */
-static int rtp_strength = 0x64;
+static struct kobject *vibe_kobj;
+static int vibe_strength;
 
 static struct drv260x {
 	struct class *class;
@@ -593,7 +590,7 @@ static void vibrator_enable(struct timed_output_dev *dev, int value)
 		if (mode != MODE_REAL_TIME_PLAYBACK) {
 			if (audio_haptics_enabled && mode == MODE_AUDIOHAPTIC)
 				setAudioHapticsEnabled(NO);
-			drv260x_set_rtp_val(rtp_strength);
+			drv260x_set_rtp_val(vibe_strength);
 			drv260x_change_mode(MODE_REAL_TIME_PLAYBACK);
 			vibrator_is_playing = YES;
 		}
@@ -692,6 +689,12 @@ static struct timed_output_dev to_dev = {
 	.get_time = vibrator_get_time,
 	.enable = vibrator_enable,
 };
+
+void set_vibrate(int value)
+{
+	vibrator_enable(&to_dev, value);
+}
+
 static void drv260x_update_init_sequence(unsigned char *seq, int size,
 					unsigned char reg, unsigned char data)
 {
@@ -936,6 +939,14 @@ static void probe_work(struct work_struct *work)
 	/* Read calibration results */
 	drv260x_read_reg_val(reinit_sequence, sizeof(reinit_sequence));
 
+	if (drv260x->use_default_calibration) {
+		reinit_sequence[3] = drv260x->default_calibration[0];
+		reinit_sequence[5] = drv260x->default_calibration[1];
+		reinit_sequence[7] = drv260x->default_calibration[2];
+		reinit_sequence[9] = drv260x->default_calibration[3];
+		reinit_sequence[11] = drv260x->default_calibration[4];
+	}
+
 	/* Read device ID */
 	device_id = (status & DEV_ID_MASK);
 	switch (device_id) {
@@ -1151,41 +1162,31 @@ static struct file_operations fops = {
 	.write = drv260x_write
 };
 
-static ssize_t show_rtp_strength(struct device *dev,
-		struct device_attribute *attr, char *buf)
+static ssize_t pwmvalue_show(struct device *dev,
+                struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%d\n", rtp_strength);
+        size_t count = 0;
+        count += sprintf(buf, "%d\n", vibe_strength);
+        return count;
 }
 
-static ssize_t store_rtp_strength(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t pwmvalue_store(struct device *dev,
+                struct device_attribute *attr, const char *buf, size_t count)
 {
-	int ret;
-	unsigned long input;
-
-	ret = kstrtoul(buf, 0, &input);
-	if (ret < 0)
-		return ret;
-
-	if (input > 127)
-		input = 127;
-	else if (input < 0)
-		input = 0;
-
-	rtp_strength = input;
-	return count;
+	int vs = 0;
+        sscanf(buf, "%d ",&vs);
+        if (vs < 0 || vs > 127) vs = 100;
+	vibe_strength = vs;
+        return count;
 }
 
-static DEVICE_ATTR(rtp_strength, (S_IWUSR|S_IRUGO),
-	show_rtp_strength, store_rtp_strength);
-
-struct kobject *drv2605_kobj;
-EXPORT_SYMBOL_GPL(drv2605_kobj);
+static DEVICE_ATTR(pwmvalue, (S_IWUSR|S_IRUGO), pwmvalue_show, pwmvalue_store);
 
 static int drv260x_init(void)
 {
 	int reval = -ENOMEM;
 
+	vibe_strength = REAL_TIME_PLAYBACK_STRENGTH;
 	drv260x = kmalloc(sizeof *drv260x, GFP_KERNEL);
 	if (!drv260x) {
 		printk(KERN_ALERT
@@ -1239,18 +1240,11 @@ static int drv260x_init(void)
 	wake_lock_init(&vibdata.wklock, WAKE_LOCK_SUSPEND, "vibrator");
 	mutex_init(&vibdata.lock);
 
-	drv2605_kobj = kobject_create_and_add("drv2605", NULL) ;
-	if (drv2605_kobj == NULL) {
-		printk(KERN_ALERT "drv260x: drv2605_kobj create_and_add failed\n");
-	}
-
-	reval = sysfs_create_file(drv2605_kobj, &dev_attr_rtp_strength.attr);
-	if (reval) {
-		printk(KERN_ALERT "drv260x: sysfs_create_file failed for rtp_strength\n");
-	}
-
 	printk(KERN_ALERT "drv260x: initialized\n");
 
+	vibe_kobj = kobject_create_and_add("vibrator", NULL);
+	if (!vibe_kobj) return 0;
+	reval = sysfs_create_file(vibe_kobj, &dev_attr_pwmvalue.attr);
 	return 0;
 
  fail6:
@@ -1268,7 +1262,7 @@ static int drv260x_init(void)
 
 static void drv260x_exit(void)
 {
-	kobject_del(drv2605_kobj);
+	kobject_del(vibe_kobj);
 	gpio_direction_output(drv260x->en_gpio, GPIO_LEVEL_LOW);
 	gpio_free(drv260x->en_gpio);
 	if (!IS_ERR(drv260x->vibrator_vdd))
