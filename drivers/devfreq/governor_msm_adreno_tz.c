@@ -155,7 +155,6 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 	int gpu_percent;
 	static int busy_bin, frame_flag;
 	unsigned int scm_data[3];
-	static int busy_bin, frame_flag;
 
 	if (priv->bus.num)
 		stats.private_data = &b;
