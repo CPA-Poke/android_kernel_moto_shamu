@@ -71,6 +71,24 @@ struct cpufreq_suspend_t {
 	int device_suspended;
 };
 
+/* Max frequency to add to the frequency_table */
+static unsigned long arg_cpu_max_freq = 3091200;
+
+static int __init cpufreq_read_cpu_max_freq(char *cpu_max_freq)
+{
+	unsigned long ui_khz;
+	int ret;
+
+	ret = kstrtoul(cpu_max_freq, 0, &ui_khz);
+	if (ret)
+		return -EINVAL;
+
+	arg_cpu_max_freq = ui_khz;
+	printk("cpu_max_freq=%lu\n", arg_cpu_max_freq);
+	return ret;
+}
+__setup("cpu_max_freq=", cpufreq_read_cpu_max_freq);
+
 static DEFINE_PER_CPU(struct cpufreq_suspend_t, cpufreq_suspend);
 
 unsigned long msm_cpufreq_get_bw(void)
@@ -331,8 +349,6 @@ static int msm_cpufreq_init(struct cpufreq_policy *policy)
 	policy->min = CONFIG_MSM_CPU_FREQ_MIN;
 	policy->max = CONFIG_MSM_CPU_FREQ_MAX;
 #endif
-	policy->max = 2649600;
-	policy->min = 300000;
 
 	cur_freq = clk_get_rate(cpu_clk[policy->cpu])/1000;
 
@@ -354,7 +370,7 @@ static int msm_cpufreq_init(struct cpufreq_policy *policy)
 		return ret;
 	pr_debug("cpufreq: cpu%d init at %d switching to %d\n",
 			policy->cpu, cur_freq, table[index].frequency);
-	policy->cur = policy->max;
+	policy->cur = table[index].frequency;
 
 	return 0;
 }
@@ -566,6 +582,15 @@ static int cpufreq_parse_dt(struct device *dev)
 		 */
 		if (i > 0 && f <= freq_table[i-1].frequency)
 			break;
+
+		/*
+		 * If current frequency being read is greater than the
+		 * max frequency allowed skip adding it to the table.
+		 */
+		if (f > arg_cpu_max_freq) {
+			nf = i;
+			break;
+		}
 
 		freq_table[i].driver_data = i;
 		freq_table[i].frequency = f;
