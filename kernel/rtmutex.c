@@ -159,18 +159,6 @@ int rt_mutex_getprio(struct task_struct *task)
 }
 
 /*
- * Called by sched_setscheduler() to check whether the priority change
- * is overruled by a possible priority boosting.
- */
-int rt_mutex_check_prio(struct task_struct *task, int newprio)
-{
-	if (!task_has_pi_waiters(task))
-		return 0;
-
-	return task_top_pi_waiter(task)->task->prio <= newprio;
-}
-
-/*
  * Adjust the priority of a task, after its pi_waiters got modified.
  *
  * This can be both boosting and unboosting. task->pi_lock must be held.
@@ -508,6 +496,18 @@ static int task_blocks_on_rt_mutex(struct rt_mutex *lock,
 	struct rt_mutex *next_lock;
 	int chain_walk = 0, res;
 	unsigned long flags;
+
+	/*
+	 * Early deadlock detection. We really don't want the task to
+	 * enqueue on itself just to untangle the mess later. It's not
+	 * only an optimization. We drop the locks, so another waiter
+	 * can come in before the chain walk detects the deadlock. So
+	 * the other will detect the deadlock and return -EDEADLOCK,
+	 * which is wrong, as the other waiter is not in a deadlock
+	 * situation.
+	 */
+	if (owner == task)
+		return -EDEADLK;
 
 	/*
 	 * Early deadlock detection. We really don't want the task to
